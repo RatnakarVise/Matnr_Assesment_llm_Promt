@@ -101,7 +101,14 @@ def render_snippets_block(snips: List[str]) -> str:
     return "\n".join(lines)
 
 # ====== LangChain prompt & chain ======
-SYSTEM_MSG = "You are a precise ABAP remediation planner that outputs strict JSON only."
+# ====== LangChain prompt & chain ======
+SYSTEM_MSG = """
+You are a precise ABAP remediation planner that outputs strict JSON only.
+IMPORTANT:
+- The "llm_prompt" must explicitly reference **every snippet provided** (using its *[n]* identifier).
+- If a snippet is given, it must appear verbatim in the llm_prompt context.
+""".strip()
+
 
 USER_TEMPLATE = """
 You are a senior ABAP reviewer and modernization planner.
@@ -129,7 +136,7 @@ Unit metadata:
 - Start line: {start_line}
 - End line: {end_line}
 
-Critical code snippets (verbatim, use these to tailor the prompt precisely):
+Critical code snippets (verbatim, use these to tailor the prompt precisely,must all appear in llm_prompt):
 {snippets_block}
 
 ABAP code (optional; may be empty):
