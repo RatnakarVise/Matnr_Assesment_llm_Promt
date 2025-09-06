@@ -105,8 +105,9 @@ def render_snippets_block(snips: List[str]) -> str:
 SYSTEM_MSG = """
 You are a precise ABAP remediation planner that outputs strict JSON only.
 IMPORTANT:
-- The "llm_prompt" must explicitly reference **every snippet provided** (using its *[n]* identifier).
-- If a snippet is given, it must appear verbatim in the llm_prompt context.
+- The "llm_prompt" must contain clear bullet points explaining what to change in each provided snippet.
+- Do NOT just reference snippet numbers; instead, describe what replacement or adjustment is needed.
+- Every snippet provided must be addressed with explicit remediation instructions.
 """.strip()
 
 
