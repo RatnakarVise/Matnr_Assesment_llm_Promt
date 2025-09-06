@@ -3,8 +3,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 import os, json
-from dotenv import load_dotenv
-load_dotenv()
+
 # ---- LLM is mandatory (no fallback) ----
 
 os.environ["LANGCHAIN_TRACING_V2"]="true"
