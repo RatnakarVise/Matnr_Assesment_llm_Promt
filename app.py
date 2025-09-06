@@ -3,7 +3,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 import os, json
-
+from dotenv import load_dotenv
+load_dotenv()
 # ---- LLM is mandatory (no fallback) ----
 
 os.environ["LANGCHAIN_TRACING_V2"]="true"
@@ -67,6 +68,38 @@ def summarize_findings(unit: Unit) -> Dict[str, Any]:
             "issue_type_counts": type_counts,
         }
     }
+# ====== NEW: collect up to 6 unique, trimmed offending snippets ======
+def collect_critical_snippets(unit: Unit, max_snips: int = 6, max_chars: int = 240) -> List[str]:
+    seen = set()
+    out: List[str] = []
+    for f in (unit.matnr_findings or []):
+        s = (f.snippet or "").strip()
+        if not s:
+            continue
+        # normalize whitespace/newlines for stable dedupe
+        norm = " ".join(s.split())
+        if not norm:
+            continue
+        if norm in seen:
+            continue
+        seen.add(norm)
+        # trim long snippets but keep verbatim feel
+        if len(s) > max_chars:
+            s = s[:max_chars].rstrip() + " …"
+        out.append(s)
+        if len(out) >= max_snips:
+            break
+    return out
+
+def render_snippets_block(snips: List[str]) -> str:
+    if not snips:
+        return "(none)"
+    # Render as a single ABAP code fence with numbered separators for high precision
+    lines = []
+    for idx, s in enumerate(snips, 1):
+        # keep snippet exactly as provided to maximize verbatim anchoring
+        lines.append(f"*[{idx}]* {s}")
+    return "\n".join(lines)
 
 # ====== LangChain prompt & chain ======
 SYSTEM_MSG = "You are a precise ABAP remediation planner that outputs strict JSON only."
@@ -97,8 +130,12 @@ Unit metadata:
 - Start line: {start_line}
 - End line: {end_line}
 
+Critical code snippets (verbatim, use these to tailor the prompt precisely):
+{snippets_block}
+
 ABAP code (optional; may be empty):
 {code}
+
 Planning summary (agentic):
 {plan_json}
 
@@ -122,6 +159,9 @@ def llm_assess_and_prompt(unit: Unit) -> Dict[str, str]:
     plan = summarize_findings(unit)
     plan_json = json.dumps(plan, ensure_ascii=False, indent=2)
 
+    # NEW: inject up to 6 unique trimmed snippets
+    snippets = collect_critical_snippets(unit)
+    snippets_block = render_snippets_block(snippets)
     try:
         return chain.invoke(
             {
@@ -134,6 +174,7 @@ def llm_assess_and_prompt(unit: Unit) -> Dict[str, str]:
                 "code": unit.code or "",
                 "plan_json": plan_json,
                 "findings_json": findings_json,
+                "snippets_block": snippets_block,
             }
         )
     except Exception as e:
@@ -154,7 +195,10 @@ async def assess_and_prompt(units: List[Unit]) -> List[Dict[str, Any]]:
         obj = u.model_dump()
         llm_out = llm_assess_and_prompt(u)
         obj["assessment"] = llm_out.get("assessment", "")
-        obj["llm_prompt"] = llm_out.get("llm_prompt", "")
+        p = llm_out.get("llm_prompt", "")
+        if isinstance(p, list):
+            p = "\n".join(str(x) for x in p if x is not None)
+        obj["llm_prompt"] = p
         obj.pop("matnr_findings", None)
         out.append(obj)
     return out
